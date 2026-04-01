@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "JanitorAI Reasoning Effort",
+  "version": "1.0.0",
+  "description": "Inject reasoning effort settings into Janitor AI chat API requests.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "janitorai-reasoning-effort@tydorius.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://janitorai.com/chats/*"
+      ],
+      "js": [
+        "content-scripts/injector.js",
+        "content-scripts/scraper.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content-scripts/interceptor.js"
+      ],
+      "matches": [
+        "https://janitorai.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "JanitorAI Reasoning Effort"
+  }
+}

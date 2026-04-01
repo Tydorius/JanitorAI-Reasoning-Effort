@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+  <title>JanitorAI Reasoning Effort</title>
+</head>
+<body>
+  <div class="header">
+    <div class="title">Reasoning Effort Manager</div>
+    <div class="subtitle">Set effort level for your proxy models</div>
+  </div>
+  
+  <div class="container">
+    <div id="settings-container">
+      <!-- Models and selections will be populated here -->
+    </div>
+    
+    <div style="margin-top: 15px; font-size: 11px; color: #666; text-align: center;">
+      Tip: Open "Proxy API Configurations" on a JanitorAI chat page to auto-populate your models, or send a message to automatically catch the current model.
+    </div>
+    <div style="text-align: center; margin-top: 10px;">
+      <button id="clear-all" style="background-color: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">Clear All Models</button>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
