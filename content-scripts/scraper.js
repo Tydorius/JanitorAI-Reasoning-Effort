@@ -27,32 +27,35 @@
     }
   }
 
-  function scrapeModels() {
-    const fullText = document.body.innerText || "";
-    
-    // Match model names immediately preceding an API URL
-    const regex = /([a-zA-Z0-9\/\.\-:]+)[\s\n\r]{0,10}https?:\/\/[^\s]+/g;
-    let match;
-    const currentFound = [];
-    
-    while ((match = regex.exec(fullText)) !== null) {
-      const model = match[1].trim();
-      // Clean string
-      const cleanModel = model.split(/[\s\n\r]+/).pop().trim();
-      if (cleanModel && cleanModel.length > 2 && cleanModel !== 'http' && !cleanModel.startsWith('http')) {
-        currentFound.push(cleanModel);
+  function scanPanelForModels() {
+    // Partial class match handles the build-hash suffix in CSS module class names.
+    const modelEls = document.querySelectorAll('[class*="_configCardModel_"]');
+    if (modelEls.length === 0) return;
+    const models = [];
+    modelEls.forEach(el => {
+      const text = el.textContent.trim();
+      // Model IDs are non-empty, under 200 chars, and contain no spaces.
+      if (text && text.length > 1 && text.length < 200 && !text.includes(' ')) {
+        models.push(text);
       }
-    }
-    
-    if (currentFound.length > 0) {
-      syncModelsToStorage(currentFound);
+    });
+    if (models.length > 0) {
+      syncModelsToStorage(models);
     }
   }
 
-  // Poll DOM for changes
-  setInterval(scrapeModels, 2000);
-  
-  // Listen for interceptor detection events
+  // Fallback poll for panels already open at page load.
+  setInterval(scanPanelForModels, 2000);
+
+  // Immediate scan on panel insertion.
+  const observer = new MutationObserver(() => {
+    if (document.querySelector('[class*="_configCardModel_"]')) {
+      scanPanelForModels();
+    }
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Model names broadcast by interceptor.js from live fetch calls.
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     if (event.data && event.data.type === 'JANITOR_REASONING_OBSERVED_MODEL') {

@@ -1,58 +1,61 @@
 # JanitorAI Reasoning Effort Extension
 
-## Project Context & Objective
-JanitorAI uses standard completion API payloads (`/chat/completions`) for text generation but currently lacks native UI support for injecting emerging fields like `reasoning_effort` or `thinking` used by modern models (e.g., `o1`, `o3-mini`, `claude-3-7-sonnet`).
+A Firefox extension (Manifest V3) that intercepts JanitorAI's outgoing chat completion requests and injects a `reasoning_effort` field into the request body on a per-model basis.
 
-**Objective:** Build a Firefox extension (Manifest V3) that allows users to configure a mapping of models to reasoning effort levels (`low`, `medium`, `high`, or `none`). The extension intercepts outgoing API requests on JanitorAI, reads the configured model from the JSON payload, injects the corresponding reasoning parameter into the POST body, and forwards the modified request.
+`reasoning_effort` is an OpenAI-compatible parameter supported by certain providers and reasoning models (OpenRouter, o1/o3-series, DeepSeek R1, etc.). It has no effect on models that do not support it and can be left at `None` for those.
 
-## Core Technical Challenge: The "Monkey-Patch" Architecture
-The Extension API (`webRequest`) **cannot** modify the *body* of POST requests. Therefore, we must intercept the `window.fetch` call directly within the webpage's environment.
+## Installation
 
-To do this securely and successfully in Firefox MV3 without CSP violations, we use a two-script injection architecture:
+1. Navigate to `about:debugging#/runtime/this-firefox` in Firefox.
+2. Click **Load Temporary Add-on** and select `manifest.json` from this directory.
 
-### 1. The Injector (Isolated World Content Script)
-`content-scripts/injector.js`
-*   **Permissions Context:** Runs in the isolated extension world. It has access to `browser.storage.local`.
-*   **Responsibility 1:** Retrieve the user's reasoning settings from `browser.storage.local`.
-*   **Responsibility 2:** Pass these settings to the webpage’s main world. This is typically done by embedding a `<script>` tag containing the settings as a JSON string, or writing them to a hidden `<div id="janitor-reasoning-settings" data-config="..."></div>` in the DOM.
-*   **Responsibility 3:** Inject the main interceptor script (`interceptor.js`) into the webpage by appending a `<script src="chrome-extension://.../content-scripts/interceptor.js">` tag to the document head or body.
+To reload after changes, click **Reload** on the extension card at `about:debugging`.
 
-### 2. The Interceptor (Main World Script)
-`content-scripts/interceptor.js`
-*   **Permissions Context:** Runs in the standard webpage "Main" world. It shares the same `window` object as the JanitorAI frontend but *does not* have access to Extension APIs like `browser.storage`.
-*   **Responsibility 1:** Read the settings injected by the Injector (e.g., by checking the DOM or reading a custom `window.CustomSettings` object).
-*   **Responsibility 2:** Monkey-patch `window.fetch` (and optionally `window.XMLHttpRequest.prototype.send` if Janitor uses it, though modern apps overwhelmingly use `fetch`).
-    ```javascript
-    const originalFetch = window.fetch;
-    window.fetch = async function(...args) {
-        // ... interception logic ...
-        return originalFetch.apply(this, args);
-    }
-    ```
-*   **Responsibility 3 (Interception Logic):**
-    *   Check if the request URL targets the chat completion endpoint (e.g., `/chat/completions`, `/api/v1/chat`, or Janitor's specific proxies).
-    *   If it matches, clone the request, parse the JSON `body`.
-    *   Extract the `model` property from the JSON.
-    *   Look up the `model` in the configured settings.
-    *   If a setting exists (e.g., `reasoning_effort: "high"`), inject it into the JSON object.
-    *   Stringify the modified JSON, replace the request body, and pass it to `originalFetch`.
+## Usage
 
-### 3. The Settings UI (Popup)
-`popup/popup.html`, `popup.css`, `popup.js`
-*   **UI Elements:** A dynamic list where the user can view auto-populated proxy models, and a button to clear them.
-*   **Interaction:** User toggles a dropdown for `Reasoning Effort: None / Low / Medium / High` per configured model.
-*   **Persistence:** Saves this JSON mapping to `browser.storage.local`.
+1. Navigate to a JanitorAI chat page (`janitorai.com/chats/*`).
+2. Open the **API Settings** panel and select the **Proxy** tab. The extension reads the model IDs from the rendered config cards and registers any new ones automatically.
+3. Click the extension icon. Each detected model appears with a dropdown set to `None` by default.
+4. Set the desired effort level (`Low`, `Medium`, or `High`) for each model. The setting is saved immediately.
+5. On the next chat request using that model, `reasoning_effort` is injected into the outgoing API call body.
 
-## Current File Structure
-```text
-Janitor_AI_Reasoning_Effort/
+Models can also be detected automatically when a chat request is sent, without opening the settings panel first.
+
+## Architecture
+
+The Extension `webRequest` API cannot modify POST request bodies, so the extension monkey-patches `window.fetch` directly inside the page's execution context. This requires a two-script architecture to bridge the extension's isolated world and the page's main world.
+
+### content-scripts/injector.js
+
+Runs at `document_start` in the isolated extension world. Reads the reasoning config from `browser.storage.local`, writes it to `document.documentElement.dataset.janitorReasoningConfig`, then injects `interceptor.js` into the page as a `<script>` tag. Listens for storage changes and keeps the dataset attribute current.
+
+### content-scripts/interceptor.js
+
+Runs in the page's main world (no access to extension APIs). Monkey-patches `window.fetch` to intercept requests matching `/chat/completions` or `/api/v1/chat`. On a matching request, parses the JSON body, reads the effort level for the model from the dataset attribute set by `injector.js`, and injects `reasoning_effort` if the level is not `none`. Broadcasts the observed model name via `window.postMessage` so `scraper.js` can register it.
+
+### content-scripts/scraper.js
+
+Runs in the isolated extension world alongside `injector.js`. Discovers proxy model IDs two ways:
+
+- **DOM scan:** queries `[class*="_configCardModel_"]` elements from the proxy config panel when it is open. A `MutationObserver` triggers an immediate scan when the panel is added to the DOM; a 2-second interval poll handles panels open at load time. The partial class selector is intentional — JanitorAI uses CSS modules with a build-hash suffix that changes across deploys.
+- **postMessage:** listens for `JANITOR_REASONING_OBSERVED_MODEL` messages broadcast by `interceptor.js` when a live chat request is intercepted.
+
+Newly discovered model IDs are written to `browser.storage.local` with a default effort of `none`.
+
+### popup/
+
+Reads `browser.storage.local` and renders a list of known models with per-model effort dropdowns. Changes are written to storage immediately. Individual models can be removed with the X button; all models can be cleared with the Clear All button.
+
+## File Structure
+
+```
 ├── manifest.json
 ├── popup/
 │   ├── popup.html
 │   ├── popup.css
 │   └── popup.js
 └── content-scripts/
-    ├── scraper.js
     ├── injector.js
-    └── interceptor.js
+    ├── interceptor.js
+    └── scraper.js
 ```

@@ -11,11 +11,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   document.getElementById('clear-all')?.addEventListener('click', async () => {
-    if (confirm('Are you sure you want to clear all learned models?')) {
-      config = {}; // Clear the in-memory config
-      await browser.storage.local.set({ reasoningConfig: {} }); // Clear storage
-      renderList(); // Re-render to show empty state
-    }
+    config = {};
+    await browser.storage.local.set({ reasoningConfig: {} });
+    renderList();
   });
 
   function renderList() {
@@ -37,7 +35,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       nameEl.className = 'model-name';
       nameEl.textContent = model;
       
-      // Inline select dropdown
       const selectEl = document.createElement('select');
       selectEl.className = 'model-effort-select';
       ['none', 'low', 'medium', 'high'].forEach(level => {
@@ -50,7 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectEl.appendChild(option);
       });
 
-      // Auto-save on change
       selectEl.addEventListener('change', async (e) => {
         config[model] = e.target.value;
         await saveConfig();
